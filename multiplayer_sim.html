@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>One Piece TCG Stable Engine</title>
+    <style>
+        /* ================= DEPLOYMENT GRID ENGINE ================= */
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body { background-color: #0c0c0e; color: #e1e1e6; font-family: system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; padding: 10px; gap: 8px; overflow: hidden; }
+        
+        .board-row { height: 21vh; border: 2px solid #23232f; background: #16161c; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 15px; position: relative; padding: 5px 10px; }
+        .row-title { position: absolute; top: 4px; left: 8px; font-size: 0.6rem; text-transform: uppercase; color: rgba(255, 255, 255, 0.3); letter-spacing: 1px; font-weight: bold; pointer-events: none; }
+
+        /* ================= CONTROLS DOCK LAYOUT ================= */
+        .player-hud { height: 12vh; background: #141416; border: 2px solid #22222b; border-radius: 8px; display: flex; align-items: center; padding: 5px 15px; gap: 15px; }
+        .controls-box { display: flex; flex-direction: column; gap: 4px; min-width: 145px; font-size: 0.8rem; font-weight: bold; }
+        .hand-container { flex-grow: 1; display: flex; gap: 10px; overflow-x: auto; align-items: center; height: 100%; border-left: 2px dashed #2d2d3d; padding-left: 15px; }
+
+        /* ================= DYNAMIC CARDS FRAME ================= */
+        .card { width: 80px; height: 110px; border-radius: 6px; border: 2px solid #ff4d4d; position: relative; cursor: pointer; background: #202026; display: flex; flex-direction: column; justify-content: space-between; padding: 5px; font-weight: bold; flex-shrink: 0; box-shadow: 0 4px 8px rgba(0,0,0,0.5); }
+        .p2-card { border-color: #3b82f6; }
+        
+        .card-top { display: flex; justify-content: space-between; font-size: 0.75rem; pointer-events: none; }
+        .card-cost { color: #ffbf00; background: rgba(0,0,0,0.5); padding: 1px 3px; border-radius: 2px; }
+        .card-id { font-size: 0.5rem; color: #a0aec0; }
+        .card-mid { text-align: center; font-size: 0.7rem; background: rgba(0,0,0,0.3); border-radius: 3px; padding: 6px 0; pointer-events: none; }
+        .card-bottom { display: flex; justify-content: space-between; align-items: center; font-size: 0.55rem; pointer-events: none; }
+        .card-keyword { font-size: 0.45rem; background: #00875f; padding: 1px 2px; border-radius: 2px; }
+        .card-power { background: #960000; padding: 1px 3px; border-radius: 2px; }
+
+        .card.rested { transform: rotate(90deg); border-color: #ffbf00; margin: 0 12px; }
+
+        /* ================= HEAVY INTERACTION BUTTONS ================= */
+        .action-button { background: #00875f; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.7rem; text-transform: uppercase; text-align: center; border-bottom: 2px solid #005f43; width: 100%; }
+        .action-button:hover { background: #00b37e; }
+        .action-button:active { border-bottom-width: 0px; margin-top: 2px; }
+        .btn-gray { background: #48484a; border-bottom-color: #3a3a3c; }
+        .btn-gray:hover { background: #636366; }
+        .btn-red { background: #e53e3e; border-bottom-color: #9b2c2c; }
+        .btn-red:hover { background: #f56565; }
+        .btn-blue { background: #2563eb; border-bottom-color: #1d4ed8; }
+        .btn-blue:hover { background: #3b82f6; }
+        .btn-group { display: flex; gap: 4px; width: 100%; }
+    </style>
+</head>
+<body>
+
+    <!-- ================= PLAYER 2 HUD AREA ================= -->
+    <div id="p2-hud" class="player-hud">
+        <div class="controls-box">
+            <div style="color: #3b82f6;">P2 Life: <span id="p2-life-lbl">5</span></div>
+            <div class="btn-group">
+                <button id="p2-damage-btn" class="action-button btn-red">Damage</button>
+                <button id="p2-heal-btn" class="action-button btn-blue">Heal</button>
+            </div>
+        </div>
+        <div class="controls-box" style="border-left: 2px dashed #2d2d3d; padding-left: 15px;">
+            <div>P2 DON: <span id="p2-don-lbl" style="color: #ffbf00;">2 / 2</span></div>
+            <div class="btn-group">
+                <button id="p2-draw-btn" class="action-button">Draw</button>
+                <button id="p2-end-btn" class="action-button btn-gray">End</button>
+            </div>
+        </div>
+        <div id="p2-hand" class="hand-container">
+            <!-- Starting card with metadata stored in clean data-attributes -->
+            <div class="card p2-card initial-playable" data-player="2" data-cost="3">
+                <div class="card-top"><span class="card-cost">3</span><span class="card-id">OP01</span></div>
+                <div class="card-mid">Kaido</div>
+                <div class="card-bottom"><span class="card-keyword">Rush</span><span class="card-power">5000</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="p2-arena" class="board-row"><div class="row-title">Player 2 Battlefield</div></div>
+    <div id="p1-arena" class="board-row"><div class="row-title">Player 1 Battlefield</div></div>
+
+    <!-- ================= PLAYER 1 HUD AREA ================= -->
+    <div id="p1-hud" class="player-hud">
+        <div class="controls-box">
+            <div style="color: #ff4d4d;">P1 Life: <span id="p1-life-lbl">5</span></div>
+            <div class="btn-group">
+                <button id="p1-damage-btn" class="action-button btn-red">Damage</button>
+                <button id="p1-heal-btn" class="action-button btn-blue">Heal</button>
+            </div>
+        </div>
+        <div class="controls-box" style="border-left: 2px dashed #2d2d3d; padding-left: 15px;">
+            <div>P1 DON: <span id="p1-don-lbl" style="color: #ffbf00;">2 / 2</span></div>
+            <div class="btn-group">
+                <button id="p1-draw-btn" class="action-button">Draw</button>
+                <button id="p1-end-btn" class="action-button btn-gray">End</button>
+            </div>
+        </div>
+        <div id="p1-hand" class="hand-container">
+            <div class="card initial-playable" data-player="1" data-cost="3">
+                <div class="card-top"><span class="card-cost">3</span><span class="card-id">OP01</span></div>
+                <div class="card-mid">Luffy</div>
+                <div class="card-bottom"><span class="card-keyword">Rush</span><span class="card-power">5000</span></div>
+            </div>
+            <div class="card initial-playable" data-player="1" data-cost="1">
+                <div class="card-top"><span class="card-cost">1</span><span class="card-id">OP01</span></div>
+                <div class="card-mid">Chopper</div>
+                <div class="card-bottom"><span class="card-keyword">Blocker</span><span class="card-power">1000</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MODERN EVENT LISTENERS ENGINE ================= -->
+    <script>
+        let p1 = { life: 5, donMax: 2, donSpent: 2, count: 0 };
+        let p2 = { life: 5, donMax: 2, donSpent: 2, count: 0 };
+
+        function syncText() {
+            document.getElementById("p1-life-lbl").innerText = p1.life;
+            document.getElementById("p2-life-lbl").innerText = p2.life;
+            document.getElementById("p1-don-lbl").innerText = `${p1.donSpent} / ${p1.donMax}`;
+            document.getElementById("p2-don-lbl").innerText = `${p2.donSpent} / ${p2.donMax}`;
+        }
+
+        // --- ATTACH SAFE LISTENERS TO NAVIGATION BUTTONS ---
+        document.getElementById("p1-damage-btn").addEventListener("click", () => { if(p1.life > 0) p1.life--; syncText(); });
+        document.getElementById("p1-heal-btn").addEventListener("click", () => { if(p1.life < 5) p1.life++; syncText(); });
+        document.getElementById("p2-damage-btn").addEventListener("click", () => { if(p2.life > 0) p2.life--; syncText(); });
+        document.getElementById("p2-heal-btn").addEventListener("click", () => { if(p2.life < 5) p2.life++; syncText(); });
+
+        document.getElementById("p1-end-btn").addEventListener("click", () => endTurn(1));
+        document.getElementById("p2-end-btn").addEventListener("click", () => endTurn(2));
+        document.getElementById("p1-draw-btn").addEventListener("click", () => executeDraw(1));
+        document.getElementById("p2-draw-btn").addEventListener("click", () => executeDraw(2));
+
+        // --- CORE CORE GAME LOGIC ENGINE ---
+        function bindCardPlayAction(cardElement) {
+            cardElement.addEventListener("click", function handler(e) {
+                let playerNum = parseInt(cardElement.getAttribute("data-player"));
+                let cost = parseInt(cardElement.getAttribute("data-cost"));
+                let state = (playerNum === 1) ? p1 : p2;
+                let arena = document.getElementById((playerNum === 1) ? "p1-arena" : "p2-arena");
+
+                if (state.donSpent >= cost) {
+                    state.donSpent -= cost;
+                    syncText();
+                    
+                    // Move card to battlefield and switch to rest/active click logic
+                    arena.appendChild(cardElement);
+                    cardElement.removeEventListener("click", handler);
+                    
+                    cardElement.addEventListener("click", () => {
+                        cardElement.classList.toggle("rested");
+                    });
+                } else {
+                    alert(`❌ Requires ${cost} DON!! (You have ${state.donSpent})`);
+                }
+            });
+        }
+
+        function executeDraw(playerNum) {
+            let state = (playerNum === 1) ? p1 : p2;
+            let hand = document.getElementById((playerNum === 1) ? "p1-hand" : "p2-hand");
